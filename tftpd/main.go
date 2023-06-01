@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	// tftp "projects/pkg/mod/github.com/pin/tftp/v3"
+
 	tftp "github.com/pin/tftp/v3"
 )
 
@@ -18,23 +20,20 @@ func readHandler(filename string, rf io.ReaderFrom) error {
 	}
 
 	// Set transfer size before calling ReadFrom.
-	rf.(tftp.OutgoingTransfer).SetSize(8 * 1024)
+	if len(getenv("TFTP_LOW_BLOCKSIZE", "")) == 0 {
+		rf.(tftp.OutgoingTransfer).SetSize(8 * 1024)
+	}
 	// Set cisco "ip tftp blocksize 8192" (and allow fragmented udp packets)
-
-	// s.SetBlockSize(65456)
+	// s.SetBlockSize(65456) max if needed
 	// https://github.com/pin/tftp/issues/41
 
 	raddr := rf.(tftp.OutgoingTransfer).RemoteAddr()
-
 	n, err := rf.ReadFrom(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
-
-	// fmt.Printf("%s : %d bytes sent from %s\n", filename, n, raddr.String())
-	fmt.Printf("%s: %d bytes sent to %s.\n", filename, n, raddr.IP.String())
-
+	fmt.Printf("Sent file %s (%d bytes) to %s\n", filename, n, raddr.IP.String())
 	return nil
 }
 
@@ -45,15 +44,13 @@ func writeHandler(filename string, wt io.WriterTo) error {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
-
 	n, err := wt.WriteTo(file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
-	// fmt.Printf("%s : %d bytes received from %s\n", filename, n, raddr.String())
-	fmt.Printf("%s: %d bytes received.\n", filename, n)
-
+	raddr := wt.(tftp.IncomingTransfer).RemoteAddr()
+	fmt.Printf("Received file %s (%d bytes) from %s\n", filename, n, raddr.IP.String())
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path"
 	"time"
 
 	"github.com/pin/tftp/v3"
@@ -44,7 +45,13 @@ func main() {
 	}
 	c.SetBlockSize(blocksize)
 
+	if len(Server) == 0 || len(remoteFile) == 0 || (put && get) {
+		flag.Usage()
+		os.Exit(-1)
+	}
+
 	switch {
+
 	case put: // UPLOAD :
 		file, err := os.Open(localFile)
 		if err != nil {
@@ -67,12 +74,17 @@ func main() {
 		fmt.Printf("PUT %s as %s/%s : %d bytes sent at %s/s\n",
 			localFile, Server, remoteFile,
 			n, prettyByteSize(float64(n)/(d.Seconds())))
+
 	case get: // DOWNLOAD:
+		// c.SetTimeout(3 * time.Second) // optional
 		// c.RequestTSize(true)
 		ts := time.Now()
 		wt, err := c.Receive(remoteFile, "octet")
 		if err != nil {
 			log.Fatal(err)
+		}
+		if len(localFile) == 0 {
+			localFile = path.Base(remoteFile)
 		}
 		file, err := os.Create(localFile)
 		if err != nil {
