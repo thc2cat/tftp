@@ -2,21 +2,21 @@ package main
 
 // V0.4 : Adding timestamp in logs.
 //        Better Dockerfile With multibuild and TZ set
+// V0.41 : Thinner container with TZ Loading
 
 import (
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"time"
-
-	// tftp "projects/pkg/mod/github.com/pin/tftp/v3"
 
 	tftp "github.com/pin/tftp/v3"
 )
 
 var (
-	setblocksize bool
+	setBlockSize bool
 )
 
 const (
@@ -24,94 +24,104 @@ const (
 	HHMMSS24h = "15:04:05"
 )
 
-// readHandler is called when client starts file download from server
+// readHandler is called when the client starts file download from the server
 func readHandler(filename string, rf io.ReaderFrom) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
+	defer file.Close()
 
-	// Set transfer size before calling ReadFrom.
-	if setblocksize {
-		rf.(tftp.OutgoingTransfer).SetSize(8 * 1024)
-	}
 	// Set cisco "ip tftp blocksize 8192" (and allow fragmented udp packets)
 	// s.SetBlockSize(65456) max if needed
 	// https://github.com/pin/tftp/issues/41
 
+	// Set transfer size before calling ReadFrom.
+	if setBlockSize {
+		rf.(tftp.OutgoingTransfer).SetSize(8 * 1024)
+	}
+
 	raddr := rf.(tftp.OutgoingTransfer).RemoteAddr()
-	ts := time.Now()
+	startTime := time.Now()
 	n, err := rf.ReadFrom(file)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
-	file.Close()
-	d := time.Now().Sub(ts)
+
+	elapsedTime := time.Since(startTime)
 	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
-	fmt.Printf("%s : Sent %s (%d bytes at %s/s) to %s\n",
+	fmt.Printf("%s: Sent %s (%d bytes at %s/s) to %s\n",
 		datetime,
 		filename, n,
-		prettyByteSize(float64(n)/(d.Seconds())),
+		prettyByteSize(float64(n)/(elapsedTime.Seconds())),
 		raddr.IP.String())
 	return nil
 }
 
-// writeHandler is called when client starts file upload to server
+// writeHandler is called when the client starts file upload to the server
 func writeHandler(filename string, wt io.WriterTo) error {
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
+	defer file.Close()
+
 	raddr := wt.(tftp.IncomingTransfer).RemoteAddr()
-	ts := time.Now()
+	startTime := time.Now()
 	n, err := wt.WriteTo(file)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return err
 	}
-	file.Close()
-	d := time.Now().Sub(ts)
-	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
 
-	fmt.Printf("%s : Received %s (%d bytes at %s/s) from %s\n",
+	elapsedTime := time.Since(startTime)
+	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
+	fmt.Printf("%s: Received %s (%d bytes at %s/s) from %s\n",
 		datetime,
 		filename, n,
-		prettyByteSize(float64(n)/(d.Seconds())),
+		prettyByteSize(float64(n)/(elapsedTime.Seconds())),
 		raddr.IP.String())
 	return nil
 }
 
 func main() {
-	// If you cant set larger blocksize
-	setblocksize = (len(getenv("TFTP_DONTSET_BLOCKSIZE", "")) == 0)
+	// If you can't set a larger blocksize
+	setBlockSize = len(getenv("TFTP_DONTSET_BLOCKSIZE", "")) == 0
 
-	// use nil in place of handler to disable read or write operations
+	// Use nil in place of a handler to disable read or write operations
 	s := tftp.NewServer(readHandler, writeHandler)
-	s.SetBackoff(func(attempts int) time.Duration { // retransmit unacknowledged
-		return time.Duration(attempts) * time.Second
+	s.SetBackoff(func(attempts int) time.Duration {
+		return time.Duration(attempts) * time.Second // Retransmit unacknowledged
 	})
 	// s.SetBackoff(func(int) time.Duration { return 0 }) // No need for retries ?
 	// s.SetTimeout(5 * time.Second) // optional
+
+	// manually set time zone ( Using scratch Docker Container )
+	if tz := os.Getenv("TZ"); tz != "" {
+		var err error
+		time.Local, err = time.LoadLocation(tz)
+		if err != nil {
+			log.Printf("error loading location '%s': %v\n", tz, err)
+		}
+	}
+
 	err := s.ListenAndServe(getenv("DOCKER_TFTP_PORT", ":69"))
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "server: %v\n", err)
+		fmt.Printf("server: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func getenv(key, fallback string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return fallback
+	value, exists := os.LookupEnv(key)
+	if exists {
+		return value
 	}
-	return value
+	return fallback
 }
 
 func prettyByteSize(bf float64) string {
-	for _, unit := range []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"} {
+	units := []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"}
+	for _, unit := range units {
 		if math.Abs(bf) < 1024.0 {
 			return fmt.Sprintf("%3.1f%sB", bf, unit)
 		}
