@@ -1,5 +1,8 @@
 package main
 
+// V0.4 : Adding timestamp in logs.
+//        Better Dockerfile With multibuild and TZ set
+
 import (
 	"fmt"
 	"io"
@@ -14,6 +17,11 @@ import (
 
 var (
 	setblocksize bool
+)
+
+const (
+	YYYYMMDD  = "2006-01-02"
+	HHMMSS24h = "15:04:05"
 )
 
 // readHandler is called when client starts file download from server
@@ -41,7 +49,9 @@ func readHandler(filename string, rf io.ReaderFrom) error {
 	}
 	file.Close()
 	d := time.Now().Sub(ts)
-	fmt.Printf("Sent file %s (%d bytes at %s/s) to %s\n",
+	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
+	fmt.Printf("%s : Sent %s (%d bytes at %s/s) to %s\n",
+		datetime,
 		filename, n,
 		prettyByteSize(float64(n)/(d.Seconds())),
 		raddr.IP.String())
@@ -64,7 +74,10 @@ func writeHandler(filename string, wt io.WriterTo) error {
 	}
 	file.Close()
 	d := time.Now().Sub(ts)
-	fmt.Printf("Received file %s (%d bytes at %s/s) from %s\n",
+	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
+
+	fmt.Printf("%s : Received %s (%d bytes at %s/s) from %s\n",
+		datetime,
 		filename, n,
 		prettyByteSize(float64(n)/(d.Seconds())),
 		raddr.IP.String())

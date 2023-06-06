@@ -1,9 +1,12 @@
-#FROM ubuntu:latest
-#RUN useradd -u 65532 scratch
+FROM golang:alpine as build
+RUN apk --no-cache add tzdata
+WORKDIR /app
+ADD . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o myapp
 
-FROM scratch
-add tftpd /
-#COPY --from=0 /etc/passwd /etc/passwd
-#USER scratch
+FROM scratch as final
+COPY --from=build /app/myapp tftpd
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+ENV TZ=Europe/Paris
+CMD ["/tftpd"]
 
-ENTRYPOINT ["/tftpd"]
