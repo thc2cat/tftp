@@ -3,6 +3,7 @@ package main
 // V0.4 : Adding timestamp in logs.
 //        Better Dockerfile With multibuild and TZ set
 // V0.41 : Thinner container with TZ Loading
+// v0.42 : DOCKERDATA + Chdir if set
 
 import (
 	"fmt"
@@ -48,13 +49,8 @@ func readHandler(filename string, rf io.ReaderFrom) error {
 		return err
 	}
 
-	elapsedTime := time.Since(startTime)
-	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
-	fmt.Printf("%s: Sent %s (%d bytes at %s/s) to %s\n",
-		datetime,
-		filename, n,
-		prettyByteSize(float64(n)/(elapsedTime.Seconds())),
-		raddr.IP.String())
+	printElapsedTime(startTime, n, filename, raddr.IP.String(), "Sent")
+
 	return nil
 }
 
@@ -73,19 +69,18 @@ func writeHandler(filename string, wt io.WriterTo) error {
 		return err
 	}
 
-	elapsedTime := time.Since(startTime)
-	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
-	fmt.Printf("%s: Received %s (%d bytes at %s/s) from %s\n",
-		datetime,
-		filename, n,
-		prettyByteSize(float64(n)/(elapsedTime.Seconds())),
-		raddr.IP.String())
+	printElapsedTime(startTime, n, filename, raddr.IP.String(), "Received")
+
 	return nil
 }
 
 func main() {
 	// If you can't set a larger blocksize
 	setBlockSize = len(getenv("TFTP_DONTSET_BLOCKSIZE", "")) == 0
+	// DOCKERDATA allow you to change to a mounted volume
+	if len(getenv("DOCKERDATA", "")) > 0 {
+		os.Chdir(getenv("DOCKERDATA", ""))
+	}
 
 	// Use nil in place of a handler to disable read or write operations
 	s := tftp.NewServer(readHandler, writeHandler)
@@ -117,6 +112,17 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func printElapsedTime(start time.Time, n int64, filename, ip, message string) {
+	elapsedTime := time.Since(start)
+	datetime := time.Now().Local().Format(YYYYMMDD + " " + HHMMSS24h)
+	fmt.Printf("%s: %s %s (%d bytes at %s/s) from %s\n",
+		datetime,
+		message,
+		filename, n,
+		prettyByteSize(float64(n)/(elapsedTime.Seconds())),
+		ip)
 }
 
 func prettyByteSize(bf float64) string {

@@ -9,4 +9,6 @@ COPY --from=build /app/myapp tftpd
 COPY --from=build /usr/local/go/lib/time/zoneinfo.zip /
 ENV TZ=Europe/Paris
 ENV ZONEINFO=/zoneinfo.zip
+ENV GOMAXPROCS=1
+ENV DOCKERDATA=/data
 CMD ["/tftpd"]
